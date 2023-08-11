@@ -23,7 +23,7 @@ SOFTWARE.
  */
 
 import annotations.CreatedAt
-import annotations.DataRecordUID
+import annotations.UniqueId
 import annotations.UpdatedAt
 import java.lang.IllegalArgumentException
 import java.net.ConnectException
@@ -129,7 +129,7 @@ class DbAccessor<T : DataRecordTemplate<T>>(val dataRecordTemplateClass: KClass<
 
     fun save(dataRecordTemplate: T): DatabaseSaveStatus = connection?.createStatement()?.run {
         val primaryKey: KProperty1<T, Long> = propertyList
-            .find { DataRecordUID::class in it.annotations.map { annotation -> annotation.annotationClass } }
+            .find { UniqueId::class in it.annotations.map { annotation -> annotation.annotationClass } }
             ?.let { it as KProperty1<T, Long> }
             ?: throw IllegalArgumentException("UID not found")
         val isUnique = countBy(primaryKey, primaryKey.call(dataRecordTemplate)) == 0L

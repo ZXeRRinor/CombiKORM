@@ -25,4 +25,4 @@ SOFTWARE.
 package annotations
 
 @Target(AnnotationTarget.PROPERTY)
-annotation class DataRecordUID()
+annotation class UniqueId()

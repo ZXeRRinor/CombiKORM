@@ -25,4 +25,4 @@ SOFTWARE.
 package annotations
 
 @Target(AnnotationTarget.CLASS)
-annotation class ForNamedDataArray(val name: String)
+annotation class Name(val name: String)

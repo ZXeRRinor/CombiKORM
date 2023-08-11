@@ -24,8 +24,8 @@ SOFTWARE.
 
 import com.sun.corba.se.spi.legacy.interceptor.UnknownType
 import annotations.CreatedAt
-import annotations.DataRecordUID
-import annotations.ForNamedDataArray
+import annotations.UniqueId
+import annotations.Name
 import annotations.UpdatedAt
 import java.time.LocalDateTime
 import java.time.OffsetDateTime
@@ -43,7 +43,7 @@ internal fun <T : DataRecordTemplate<T>> generateTableCreationQueryFor(dataRecor
     dataRecordTemplate.memberProperties.forEach {
         val annotationClasses = it.annotations.map { annotation -> annotation.annotationClass }
         when {
-            DataRecordUID::class in annotationClasses -> primaryKey = it
+            UniqueId::class in annotationClasses -> primaryKey = it
             CreatedAt::class in annotationClasses -> createdAt = it
             UpdatedAt::class in annotationClasses -> updatedAt = it
             else -> commonProperties.add(it)
@@ -92,7 +92,7 @@ internal fun <T : DataRecordTemplate<T>> getTableNameFor(dataRecordTemplate: KCl
     )
     val dataRecordTemplateName: String =
         dataRecordTemplate.simpleName ?: throw ReflectiveOperationException("Unable to get name of passed class")
-    return if (ForNamedDataArray::class in dataRecordTemplate.java.annotations.map { it.annotationClass }) (dataRecordTemplate.java.annotations.find { it is ForNamedDataArray } as ForNamedDataArray).name
+    return if (Name::class in dataRecordTemplate.java.annotations.map { it.annotationClass }) (dataRecordTemplate.java.annotations.find { it is Name } as Name).name
     else dataRecordTemplateName.removeSuffix(baseDataRecordTemplateName).lowercase() + 's'
 }
 
