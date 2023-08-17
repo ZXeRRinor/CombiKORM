@@ -1,5 +1,4 @@
 import annotations.CreatedAt
-import annotations.Name
 import annotations.Id
 import annotations.UpdatedAt
 import java.time.LocalDateTime
@@ -14,6 +13,7 @@ data class Member(
 ) : DataRecordTemplate<Member>() {
     @CreatedAt
     var createdAt: LocalDateTime = LocalDateTime.now()
+
     @UpdatedAt
     var updatedAt: LocalDateTime = LocalDateTime.now()
 }
