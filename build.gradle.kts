@@ -14,6 +14,8 @@ repositories {
 
 dependencies {
     testImplementation(kotlin("test"))
+    testImplementation("org.postgresql:postgresql:42.6.0")
+    testImplementation("org.xerial:sqlite-jdbc:3.30.1")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.1")
     implementation("org.jetbrains.kotlin:kotlin-reflect:1.8.20")
 }
