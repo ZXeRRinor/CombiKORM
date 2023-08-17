@@ -22,54 +22,38 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
  */
 
-import java.sql.Connection
-import java.sql.DriverManager
-import java.sql.SQLException
+import database.connection.DatabaseConnectionProvider
+import database.interaction.SqlDatabaseInteractor
+import database.interaction.base.BaseDatabaseInteractor
+import database.interaction.base.DatabaseInteractable
 
 object CombiKORM {
-    private val dbAccessorsRegistry = mutableListOf<DbAccessor<*>>()
-    private var url: String? = null
-    private var username: String? = null
-    private var password: String? = null
+    var verbose = false
+    private val dbAccessorsRegistry = mutableListOf<BaseDatabaseInteractor<*>>()
+    private var connectionProvider: DatabaseConnectionProvider? = null
 
-    fun initForDb(url: String, username: String, password: String) {
-        this.url = url
-        this.username = username
-        this.password = password
+    fun initForDb(connectionProvider: DatabaseConnectionProvider) {
+        this.connectionProvider = connectionProvider
     }
 
-    @Suppress("UNCHECKED_CAST") // checked by it.dataRecordTemplateClass == dataRecordTemplate::class
-    fun <T : DataRecordTemplate<T>> forDRT(dataRecordTemplate: T): DbAccessor<T> {
-        return (dbAccessorsRegistry.find { it.dataRecordTemplateClass == dataRecordTemplate::class }
-                as DbAccessor<T>?)
-            ?: DbAccessor(dataRecordTemplate::class).also { dbAccessorsRegistry.add(it) }
+    @Deprecated("Only for SQL", ReplaceWith("{}"), DeprecationLevel.WARNING)
+    @Suppress("UNCHECKED_CAST") // checked by it.isForDataRecordTemplate(dataRecordTemplate)
+    fun <T : DataRecordTemplate<T>> forDRT(dataRecordTemplate: T): BaseDatabaseInteractor<T> {
+        return (dbAccessorsRegistry.find { it.isForDataRecordTemplate(dataRecordTemplate) }
+                as BaseDatabaseInteractor<T>?)
+            ?: SqlDatabaseInteractor(dataRecordTemplate::class).also { dbAccessorsRegistry.add(it) }
     }
 
-    @Suppress("UNCHECKED_CAST") // checked by it.dataRecordTemplateClass == dataRecordTemplate::class
-    fun <T : DataRecordTemplate<T>, R> forDRT(dataRecordTemplate: T, dbActions: DbAccessor<T>.() -> R): R {
-        val accessor = (dbAccessorsRegistry.find { it.dataRecordTemplateClass == dataRecordTemplate::class }
-                as DbAccessor<T>?)
-            ?: DbAccessor(dataRecordTemplate::class).also { dbAccessorsRegistry.add(it) }
-        return accessor {
+    @Deprecated("Only for SQL", ReplaceWith("{}"), DeprecationLevel.WARNING)
+    @Suppress("UNCHECKED_CAST") // checked by it.isForDataRecordTemplate(dataRecordTemplate)
+    fun <T : DataRecordTemplate<T>, R> forDRT(dataRecordTemplate: T, dbActions: DatabaseInteractable.() -> R): R {
+        val interactor = (dbAccessorsRegistry.find { it.isForDataRecordTemplate(dataRecordTemplate) }
+                as BaseDatabaseInteractor<T>?)
+            ?: SqlDatabaseInteractor(dataRecordTemplate::class).also { dbAccessorsRegistry.add(it) }
+        return interactor {
             dbActions()
         }
     }
 
-    internal fun getDbConnection(): Connection? {
-        try {
-            Class.forName("org.postgresql.Driver")
-            try {
-                return DriverManager.getConnection(
-                    url ?: return null,
-                    username ?: return null,
-                    password ?: return null
-                )
-            } catch (e: SQLException) {
-                println(e.message)
-            }
-        } catch (e: ClassNotFoundException) {
-            println(e.message)
-        }
-        return null
-    }
+    internal fun getDbConnection() = connectionProvider?.createConnection()
 }
