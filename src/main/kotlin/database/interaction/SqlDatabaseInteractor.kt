@@ -27,60 +27,64 @@ package database.interaction
 import CombiKORM
 import DataRecordTemplate
 import DatabaseSaveStatus
-import annotations.CreatedAt
 import annotations.Id
-import annotations.UpdatedAt
 import database.interaction.base.BaseDatabaseInteractor
 import database.util.SqlQueryStringGenerator
 import database.util.getTypedObject
-import util.parseToLocalDateTime
 import java.net.ConnectException
 import java.sql.Connection
-import kotlin.reflect.*
+import java.sql.Statement
+import kotlin.reflect.KClass
+import kotlin.reflect.KMutableProperty
+import kotlin.reflect.KProperty
+import kotlin.reflect.KProperty1
 
 class SqlDatabaseInteractor<T : DataRecordTemplate<T>>(dataRecordTemplateClass: KClass<out T>) :
     BaseDatabaseInteractor<T>(dataRecordTemplateClass) {
     private val generator = SqlQueryStringGenerator(dataRecordTemplateClass)
-    private var connection: Connection? = CombiKORM.getDbConnection()
     private var activeDatabaseSessions = 1
 
+    private var connection: Connection? = CombiKORM.getDbConnection()
+        get() = if (field?.isClosed != false || field?.isValid(3) != true) {
+            field?.close()
+            CombiKORM.getDbConnection()
+        } else field
+    private var statement: Statement? = connection?.createStatement()
+        get() = field ?: connection?.createStatement()?.also { field = it }
+
     init {
-        connection?.createStatement()?.run {
+        statement?.run {
             execute(generator.tableCreation())
             close()
         }
     }
 
     override operator fun <R> invoke(dbActions: BaseDatabaseInteractor<T>.() -> R): R {
-        if (connection?.isClosed != false || connection?.isValid(3) != true) {
-            connection?.close()
-            connection = CombiKORM.getDbConnection()
-        }
-        return dbActions()
+        val result = dbActions()
+        statement?.close()
+        return result
     }
 
     fun withBatchSave(dbActions: SqlDatabaseInteractor<T>.() -> Unit): Unit {
 
     }
 
-    override fun <R> executeCountBy(property: KProperty1<T, R>, value: R): Long = connection?.createStatement()?.run {
+    override fun <R> executeCountBy(property: KProperty1<T, R>, value: R): Long = statement?.run {
         val query = generator.countBy(property, value)
         val result = executeQuery(query)
         result.next()
-        val res = result.getLong(1)
-        close()
-        return@run res
+        return@run result.getLong(1)
     } ?: throw ConnectException("Unable to connect to database")
 
-    override fun executeIsUnique(dataRecordTemplate: T): Boolean = connection?.createStatement()?.run {
+    override fun executeIsUnique(dataRecordTemplate: T): Boolean {
         val primaryKey: KProperty1<T, Long> = propertyList
             .find { Id::class in it.annotations.map { annotation -> annotation.annotationClass } }
             ?.let { it as KProperty1<T, Long> } //check possibility of using other types
             ?: throw IllegalArgumentException("UID not found")
-        return@run executeCountBy(primaryKey, primaryKey.call(dataRecordTemplate)) == 0L
-    } ?: throw ConnectException("Connection to database is null")
+        return executeCountBy(primaryKey, primaryKey.call(dataRecordTemplate)) == 0L
+    }
 
-    override fun executeLoadAll(): List<T> = connection?.createStatement()?.run {
+    override fun executeLoadAll(): List<T> = statement?.run {
         val queryResult = executeQuery(generator.loadAll())
         val result = mutableListOf<T>()
         while (queryResult.next()) {
@@ -92,16 +96,16 @@ class SqlDatabaseInteractor<T : DataRecordTemplate<T>>(dataRecordTemplateClass: 
             }
             result.add(currentDataRecordTemplate)
         }
-        close()
         return@run result
     } ?: throw ConnectException("Connection to database is null")
 
-    override fun executeDeleteAll(): Unit = connection?.createStatement()?.run {
-        execute(generator.tableDrop())
-        close()
-    } ?: throw ConnectException("Connection to database is null")
+    override fun executeDeleteAll() {
+        statement?.run {
+            execute(generator.tableDrop())
+        } ?: throw ConnectException("Connection to database is null")
+    }
 
-    override fun <R> executeFindBy(property: KProperty1<T, R>, value: R): List<T> = connection?.createStatement()?.run {
+    override fun <R> executeFindBy(property: KProperty1<T, R>, value: R): List<T> = statement?.run {
         if (property !in propertyList)
             throw IllegalArgumentException("Property doesn't belong to the data record template")
         val queryResult = executeQuery(generator.findBy(property, value))
@@ -109,65 +113,40 @@ class SqlDatabaseInteractor<T : DataRecordTemplate<T>>(dataRecordTemplateClass: 
         while (queryResult.next()) {
             val currentDataRecordTemplate = dataRecordTemplateClass.java.newInstance()
             propertyList.forEach { property ->
-//                val annotationClasses = property.annotations.map { annotation -> annotation.annotationClass }
                 val classOfPropertyType = property.returnType.classifier as KClass<*>
                 val columnValue = queryResult.getTypedObject(property.name, classOfPropertyType)
-//                val columnValue = when {
-//                    CreatedAt::class in annotationClasses ->
-//                        parseToLocalDateTime(queryResult.getTimestamp(property.name).toString())
-//
-//                    UpdatedAt::class in annotationClasses ->
-//                        parseToLocalDateTime(queryResult.getTimestamp(property.name).toString())
-//
-//                    else -> classOfPropertyType.cast(
-//                        queryResult.getObject(property.name)
-//                    )
-//                }
                 (property as KMutableProperty<*>).setter.call(currentDataRecordTemplate, columnValue)
             }
             result.add(currentDataRecordTemplate)
         }
-        close()
         return@run result
     } ?: throw ConnectException("Connection to database is null")
 
-    override fun <R> executeDeleteBy(property: KProperty1<T, R>, value: R): Unit = connection?.createStatement()?.run {
-        if (property !in propertyList)
-            throw IllegalArgumentException("Property doesn't belong to the data record template")
-        execute(generator.deleteBy(property, value))
-        close()
-    } ?: throw ConnectException("Connection to database is null")
+    override fun <R> executeDeleteBy(property: KProperty1<T, R>, value: R) {
+        statement?.run {
+            if (property !in propertyList)
+                throw IllegalArgumentException("Property doesn't belong to the data record template")
+            execute(generator.deleteBy(property, value))
+        } ?: throw ConnectException("Connection to database is null")
+    }
 
-    override fun executeSave(dataRecordTemplate: T): DatabaseSaveStatus = connection?.createStatement()?.run {
+    override fun executeSave(dataRecordTemplate: T): DatabaseSaveStatus {
         val primaryKey: KProperty1<T, Long> = propertyList
             .find { Id::class in it.annotations.map { annotation -> annotation.annotationClass } }
             ?.let { it as KProperty1<T, Long> } //check possibility of using other types
             ?: throw IllegalArgumentException("UID not found")
         val isUnique = executeCountBy(primaryKey, primaryKey.call(dataRecordTemplate)) == 0L
-        return@run if (isUnique) write(dataRecordTemplate)
+        return if (isUnique) write(dataRecordTemplate)
         else update(dataRecordTemplate, primaryKey)
-    } ?: throw ConnectException("Connection to database is null")
-
-    override fun write(dataRecordTemplate: T): DatabaseSaveStatus {
-        return connection?.createStatement()?.run {
-            val res = if (execute(generator.write(dataRecordTemplate))) DatabaseSaveStatus.SUCCESS
-                else DatabaseSaveStatus.FAIL
-            close()
-            return@run res
-        } ?: DatabaseSaveStatus.FAIL
     }
 
-    override fun update(dataRecordTemplate: T, primaryKey: KProperty<*>): DatabaseSaveStatus {
-        return connection?.createStatement()?.run {
-            val res = if (execute(
-                    generator.update(
-                        dataRecordTemplate,
-                        primaryKey
-                    )
-                )
-            ) DatabaseSaveStatus.SUCCESS else DatabaseSaveStatus.FAIL
-            close()
-            return@run res
-        } ?: DatabaseSaveStatus.FAIL
-    }
+    override fun write(dataRecordTemplate: T): DatabaseSaveStatus = statement?.run {
+        if (execute(generator.write(dataRecordTemplate))) DatabaseSaveStatus.SUCCESS
+        else DatabaseSaveStatus.FAIL
+    } ?: DatabaseSaveStatus.FAIL
+
+    override fun update(dataRecordTemplate: T, primaryKey: KProperty<*>): DatabaseSaveStatus = statement?.run {
+        if (execute(generator.update(dataRecordTemplate, primaryKey))) DatabaseSaveStatus.SUCCESS
+        else DatabaseSaveStatus.FAIL
+    } ?: DatabaseSaveStatus.FAIL
 }
