@@ -13,6 +13,7 @@ class DatabaseOperationsTest {
         CombiKORM.initForDb(SqLiteConnectionProvider(testDatabasePath.toString()))
         CombiKORM.verbose = true
         val member = Member(0, 10, 10, 1000, 100)
+        CombiKORM.forDRT(Member())
         val start = LocalDateTime.now()
         val memberListFromDatabase = CombiKORM.forDRT(Member()) {
             save(member)
